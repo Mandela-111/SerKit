@@ -1,0 +1,1 @@
+This guide provides comprehensive prompts you can use with AI coding assistants to build your Flutter circuit puzzle game step by step.
