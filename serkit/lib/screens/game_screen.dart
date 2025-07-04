@@ -78,10 +78,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   void _undoLastMove() {
     final gameState = Provider.of<GameState>(context, listen: false);
     
-    if (gameState.connections.isNotEmpty) {
-      // Play click sound
+    // Try to undo the last action
+    if (gameState.undo()) {
+      // Play click sound on successful undo
       AudioManager().playSound('click');
-      gameState.removeLastConnection();
     } else {
       // Play error sound if nothing to undo
       AudioManager().playSound('error');
@@ -187,7 +187,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           ),
           IconButton(
             icon: const Icon(Icons.undo),
-            onPressed: gameState.connections.isEmpty ? null : _undoLastMove,
+            tooltip: 'Undo last action',
+            onPressed: gameState.actionHistory.isEmpty ? null : _undoLastMove,
+            color: gameState.actionHistory.isEmpty ? Colors.grey : const Color(0xFF00FFFF),
           ),
         ],
       ),

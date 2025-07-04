@@ -21,23 +21,17 @@ class AudioManager {
   double _soundVolume = 0.8;
   double _musicVolume = 0.6;
   
-  // Sound effects paths
-  final Map<String, String> _soundEffects = {
-    'click': 'audio/click.mp3',
-    'connect': 'audio/connect.mp3',
-    'disconnect': 'audio/disconnect.mp3',
-    'win': 'audio/win.mp3',
-    'error': 'audio/error.mp3',
-  };
+  // Sound effects paths with platform-specific extensions
+  late Map<String, String> _soundEffects;
   
-  // Background music paths
-  final Map<String, String> _backgroundMusic = {
-    'menu': 'audio/menu_music.mp3',
-    'game': 'audio/game_music.mp3',
-  };
+  // Background music paths with platform-specific extensions
+  late Map<String, String> _backgroundMusic;
   
   /// Initialize the audio manager
   Future<void> init() async {
+    // Initialize audio paths based on platform
+    _initializeAudioPaths();
+    
     await loadSettings();
     
     // Set up music player
@@ -46,6 +40,25 @@ class AudioManager {
     
     // Set up effect player
     await _effectPlayer.setVolume(_soundVolume);
+  }
+  
+  /// Initialize audio paths based on platform
+  void _initializeAudioPaths() {
+    // Use .wav for web (better browser compatibility) and .mp3 for native platforms
+    final String extension = kIsWeb ? 'wav' : 'mp3';
+    
+    _soundEffects = {
+      'click': 'audio/click.$extension',
+      'connect': 'audio/connect.$extension',
+      'disconnect': 'audio/disconnect.$extension',
+      'win': 'audio/win.$extension',
+      'error': 'audio/error.$extension',
+    };
+    
+    _backgroundMusic = {
+      'menu': 'audio/menu_music.$extension',
+      'game': 'audio/game_music.$extension',
+    };
   }
   
   /// Load audio settings from SharedPreferences

@@ -256,9 +256,36 @@ class StatisticsManager {
     _notifyAchievementListeners();
   }
   
+  /// Record when connections are made (bulk update)
+  Future<void> updateConnectionsMade(int count) async {
+    _statistics.totalConnections += count;
+    
+    if (count > 0) {
+      // First connection achievement
+      _updateAchievementProgress('first_connection', 1);
+    }
+    
+    await _saveData();
+    _notifyAchievementListeners();
+  }
+  
+  /// Record when connections are removed (bulk update)
+  Future<void> updateConnectionsRemoved(int count) async {
+    // We don't decrement totalConnections as that's a cumulative stat
+    // but we could track active vs. removed connections if needed
+    
+    await _saveData();
+  }
+  
   /// Record when the player uses an undo
   Future<void> onUndo() async {
     _statistics.totalUndos++;
+    await _saveData();
+  }
+  
+  /// Record undo actions (bulk update)
+  Future<void> updateUndoActions(int count) async {
+    _statistics.totalUndos += count;
     await _saveData();
   }
   
@@ -268,6 +295,19 @@ class StatisticsManager {
     
     // Persistence achievement
     if (resetCount >= 5) {
+      _updateAchievementProgress('persistence', 1);
+    }
+    
+    await _saveData();
+    _notifyAchievementListeners();
+  }
+  
+  /// Record board resets (bulk update)
+  Future<void> updateBoardResets(int count) async {
+    _statistics.totalResets += count;
+    
+    if (count > 0) {
+      // Check for persistence achievement on reset
       _updateAchievementProgress('persistence', 1);
     }
     

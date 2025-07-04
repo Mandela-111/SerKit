@@ -1,0 +1,56 @@
+{
+  "id": 1,
+  "name": "Tutorial",
+  "difficulty": "easy",
+  "gridSize": {
+    "width": 6,
+    "height": 6
+  },
+  "nodes": [
+    {
+      "id": 1,
+      "type": "source",
+      "position": {"x": 0, "y": 0},
+      "connectedTo": [3]
+    },
+    {
+      "id": 2,
+      "type": "source",
+      "position": {"x": 5, "y": 0},
+      "connectedTo": [4]
+    },
+    {
+      "id": 3,
+      "type": "processor",
+      "position": {"x": 2, "y": 2},
+      "connectedTo": [5]
+    },
+    {
+      "id": 4,
+      "type": "processor",
+      "position": {"x": 4, "y": 3},
+      "connectedTo": [5]
+    },
+    {
+      "id": 5,
+      "type": "target",
+      "position": {"x": 3, "y": 5},
+      "connectedTo": []
+    }
+  ],
+  "hints": [
+    "Connect all sources to the target",
+    "Try creating a path through the processors"
+  ],
+  "targetConnections": [
+    {"from": 1, "to": 3},
+    {"from": 2, "to": 4},
+    {"from": 3, "to": 5},
+    {"from": 4, "to": 5}
+  ],
+  "par": {
+    "moves": 4,
+    "time": 30
+  },
+  "maxConnections": 4
+}

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'node.dart';
 import 'connection.dart';
+import '../utils/statistics_manager.dart';
 
 /// GameStatus enum to track different game states
 enum GameStatus {
@@ -9,6 +10,26 @@ enum GameStatus {
   paused,
   won,
   failed,
+}
+
+/// ActionType enum to track different game actions for undo functionality
+enum ActionType {
+  addConnection,
+  removeConnection,
+  reset,
+}
+
+/// GameAction class to store information about game actions for undo functionality
+class GameAction {
+  final ActionType type;
+  final Connection? connection;
+  final List<Connection>? savedConnections;
+  
+  GameAction({
+    required this.type,
+    this.connection,
+    this.savedConnections,
+  });
 }
 
 /// GameState class that manages the entire game state
@@ -22,6 +43,11 @@ class GameState extends ChangeNotifier {
   Duration timeElapsed = Duration.zero;
   int totalLevelsCompleted = 0;
   String currentGameMode = 'Classic';
+  
+  // Move history for undo functionality
+  List<Connection> moveHistory = [];
+  List<GameAction> actionHistory = [];
+  int maxUndoSteps = 20;
   
   // Temporary variables for tracking ongoing connections
   Node? activeNode;
@@ -75,44 +101,124 @@ class GameState extends ChangeNotifier {
     connections.add(connection);
     moves++;
     
+    // Record action in history
+    actionHistory.add(GameAction(type: ActionType.addConnection, connection: connection));
+    _trimHistory();
+    
     // Update node states
     final startNode = connection.startNode;
     final endNode = connection.endNode;
     startNode.isConnected = true;
     endNode.isConnected = true;
     
+    // Update stats
+    StatisticsManager().updateConnectionsMade(1);
+    
     checkWinCondition();
     notifyListeners();
   }
 
-  /// Remove the last connection (undo)
+  /// Remove the last connection (manual removal, not undo)
   void removeLastConnection() {
     if (connections.isNotEmpty) {
       final lastConnection = connections.removeLast();
       
-      // Update node states if needed
-      final isStartNodeInOtherConnection = connections.any(
-        (conn) => conn.startNode == lastConnection.startNode || conn.endNode == lastConnection.startNode
-      );
+      // Record action in history
+      actionHistory.add(GameAction(type: ActionType.removeConnection, connection: lastConnection));
+      _trimHistory();
       
-      final isEndNodeInOtherConnection = connections.any(
-        (conn) => conn.startNode == lastConnection.endNode || conn.endNode == lastConnection.endNode
-      );
+      _updateConnectionStatus(lastConnection);
       
-      if (!isStartNodeInOtherConnection) {
-        lastConnection.startNode.isConnected = false;
-      }
-      
-      if (!isEndNodeInOtherConnection) {
-        lastConnection.endNode.isConnected = false;
-      }
+      // Update stats
+      StatisticsManager().updateConnectionsRemoved(1);
       
       notifyListeners();
+    }
+  }
+  
+  /// Undo the last action
+  bool undo() {
+    if (actionHistory.isEmpty) return false;
+    
+    final lastAction = actionHistory.removeLast();
+    
+    switch (lastAction.type) {
+      case ActionType.addConnection:
+        // Undo an add by removing the connection
+        final connectionToRemove = lastAction.connection!;
+        connections.removeWhere((conn) => 
+          conn.startNode == connectionToRemove.startNode && 
+          conn.endNode == connectionToRemove.endNode);
+        
+        _updateConnectionStatus(connectionToRemove);
+        break;
+        
+      case ActionType.removeConnection:
+        // Undo a removal by re-adding the connection
+        final connectionToAdd = lastAction.connection!;
+        connections.add(connectionToAdd);
+        connectionToAdd.startNode.isConnected = true;
+        connectionToAdd.endNode.isConnected = true;
+        break;
+        
+      case ActionType.reset:
+        // Undo a reset by restoring previous connections
+        if (lastAction.savedConnections != null) {
+          connections = List.from(lastAction.savedConnections!);
+          // Restore connection status for all nodes
+          for (final connection in connections) {
+            connection.startNode.isConnected = true;
+            connection.endNode.isConnected = true;
+          }
+        }
+        break;
+    }
+    
+    // Update statistics
+    StatisticsManager().updateUndoActions(1);
+    
+    notifyListeners();
+    return true;
+  }
+  
+  /// Update connection status for nodes after connection changes
+  void _updateConnectionStatus(Connection connection) {
+    final isStartNodeInOtherConnection = connections.any(
+      (conn) => conn.startNode == connection.startNode || conn.endNode == connection.startNode
+    );
+    
+    final isEndNodeInOtherConnection = connections.any(
+      (conn) => conn.startNode == connection.endNode || conn.endNode == connection.endNode
+    );
+    
+    if (!isStartNodeInOtherConnection) {
+      connection.startNode.isConnected = false;
+    }
+    
+    if (!isEndNodeInOtherConnection) {
+      connection.endNode.isConnected = false;
+    }
+  }
+  
+  /// Keep history within size limits
+  void _trimHistory() {
+    if (actionHistory.length > maxUndoSteps) {
+      actionHistory.removeAt(0);
     }
   }
 
   /// Remove all connections and reset the board
   void resetBoard() {
+    // Save current connections for undo
+    final savedConnections = List<Connection>.from(connections);
+    
+    // Record action in history
+    actionHistory.add(GameAction(
+      type: ActionType.reset,
+      savedConnections: savedConnections
+    ));
+    _trimHistory();
+    
     for (final row in board) {
       for (final node in row) {
         node.isConnected = false;
@@ -121,6 +227,10 @@ class GameState extends ChangeNotifier {
     connections = [];
     moves = 0;
     status = GameStatus.playing;
+    
+    // Update statistics
+    StatisticsManager().updateBoardResets(1);
+    
     notifyListeners();
   }
 

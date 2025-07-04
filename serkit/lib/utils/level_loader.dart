@@ -1,13 +1,84 @@
+import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/node.dart';
+import '../models/level.dart';
 
 /// Utility class responsible for loading level data
 class LevelLoader {
   /// Load a level from assets or generate dynamically
   static Future<List<List<Node>>> loadLevel(int levelNumber) async {
-    // In a real game, we would load level data from JSON files
-    // For demonstration, we'll generate levels programmatically
+    try {
+      // Try to load from JSON file first
+      final level = await loadLevelFromJson(levelNumber);
+      if (level != null) {
+        return _convertLevelToBoard(level);
+      }
+    } catch (e) {
+      print('Failed to load level from JSON: $e');
+    }
+    
+    // Fallback to generated level if JSON loading fails
     return _generateLevel(levelNumber);
+  }
+  
+  /// Load a level from a JSON file
+  static Future<Level?> loadLevelFromJson(int levelNumber) async {
+    try {
+      final jsonString = await rootBundle.loadString('assets/levels/level_$levelNumber.json');
+      final jsonData = json.decode(jsonString) as Map<String, dynamic>;
+      return Level.fromJson(jsonData);
+    } catch (e) {
+      print('Error loading level $levelNumber JSON: $e');
+      return null;
+    }
+  }
+  
+  /// Convert a Level object to a board of nodes
+  static List<List<Node>> _convertLevelToBoard(Level level) {
+    final width = level.gridSize.width;
+    final height = level.gridSize.height;
+    
+    // Create empty board
+    List<List<Node>> board = List.generate(
+      height,
+      (i) => List.generate(
+        width,
+        (j) => Node(
+          row: i,
+          col: j,
+          type: NodeType.regular,
+          isRequired: false,
+        ),
+      ),
+    );
+    
+    // Place nodes from level data
+    for (final nodeData in level.nodes) {
+      final NodeType type = _convertNodeType(nodeData.type);
+      board[nodeData.position.y][nodeData.position.x] = Node(
+        row: nodeData.position.y,
+        col: nodeData.position.x,
+        type: type,
+        isRequired: true,
+      );
+    }
+    
+    return board;
+  }
+  
+  /// Convert node type string from JSON to NodeType enum
+  static NodeType _convertNodeType(String typeStr) {
+    switch (typeStr) {
+      case 'source':
+        return NodeType.start;
+      case 'target':
+        return NodeType.end;
+      case 'processor':
+        return NodeType.junction;
+      default:
+        return NodeType.regular;
+    }
   }
   
   /// Generate a level programmatically based on level number
