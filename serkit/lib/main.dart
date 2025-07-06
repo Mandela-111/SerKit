@@ -8,6 +8,7 @@ import 'screens/settings_screen.dart';
 import 'screens/level_select_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/achievements_screen.dart';
+import 'screens/game_modes_screen.dart';
 import 'models/game_state.dart';
 import 'utils/audio_manager.dart';
 import 'utils/statistics_manager.dart';
@@ -70,6 +71,7 @@ class MyApp extends StatelessWidget {
           '/settings': (context) => const SettingsScreen(),
           '/level_select': (context) => const LevelSelectScreen(),
           '/achievements': (context) => const AchievementsScreen(),
+          '/game_modes': (context) => const GameModesScreen(),
         },
       ),
     );

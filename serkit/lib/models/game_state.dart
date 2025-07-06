@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'node.dart';
 import 'connection.dart';
+import 'game_mode.dart';
 import '../utils/statistics_manager.dart';
 
 /// GameStatus enum to track different game states
@@ -40,9 +42,19 @@ class GameState extends ChangeNotifier {
   GameStatus status = GameStatus.playing;
   int currentLevel = 1;
   int moves = 0;
-  Duration timeElapsed = Duration.zero;
   int totalLevelsCompleted = 0;
-  String currentGameMode = 'Classic';
+  
+  // Game mode properties
+  GameModeType _gameModeType = GameModeType.classic;
+  GameMode get gameMode => GameMode.fromType(_gameModeType);
+  String get currentGameModeName => gameMode.name;
+  
+  // Time tracking
+  Duration timeElapsed = Duration.zero;
+  int _remainingTimeSeconds = 0;
+  int get remainingTimeSeconds => _remainingTimeSeconds;
+  Timer? _gameTimer;
+  bool get isTimedMode => _gameModeType == GameModeType.timeAttack;
   
   // Move history for undo functionality
   List<Connection> moveHistory = [];
@@ -56,6 +68,12 @@ class GameState extends ChangeNotifier {
   GameState() {
     _loadGameState();
   }
+  
+  @override
+  void dispose() {
+    _stopGameTimer();
+    super.dispose();
+  }
 
   /// Load saved game state from SharedPreferences
   Future<void> _loadGameState() async {
@@ -63,7 +81,10 @@ class GameState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       currentLevel = prefs.getInt('currentLevel') ?? 1;
       totalLevelsCompleted = prefs.getInt('totalLevelsCompleted') ?? 0;
-      currentGameMode = prefs.getString('currentGameMode') ?? 'Classic';
+      
+      final savedGameMode = prefs.getString('gameModeType') ?? 'classic';
+      _gameModeType = GameMode.typeFromString(savedGameMode);
+      
       notifyListeners();
     } catch (e) {
       if (kDebugMode) {
@@ -78,7 +99,7 @@ class GameState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('currentLevel', currentLevel);
       await prefs.setInt('totalLevelsCompleted', totalLevelsCompleted);
-      await prefs.setString('currentGameMode', currentGameMode);
+      await prefs.setString('gameModeType', GameMode.typeToString(_gameModeType));
     } catch (e) {
       if (kDebugMode) {
         print('Error saving game state: $e');
@@ -93,6 +114,16 @@ class GameState extends ChangeNotifier {
     moves = 0;
     status = GameStatus.playing;
     timeElapsed = Duration.zero;
+    
+    // Start the timer for time attack mode
+    _stopGameTimer(); // Stop any existing timer
+    
+    if (isTimedMode) {
+      // Set initial time from game mode settings
+      _remainingTimeSeconds = gameMode.settings['initialTimeSeconds'] as int;
+      _startGameTimer();
+    }
+    
     notifyListeners();
   }
 
@@ -113,6 +144,12 @@ class GameState extends ChangeNotifier {
     
     // Update stats
     StatisticsManager().updateConnectionsMade(1);
+    
+    // Add bonus time in time attack mode
+    if (isTimedMode) {
+      final timeBonus = gameMode.settings['timePerConnectionBonus'] as int;
+      _remainingTimeSeconds += timeBonus;
+    }
     
     checkWinCondition();
     notifyListeners();
@@ -243,6 +280,14 @@ class GameState extends ChangeNotifier {
     if (allNodesConnected) {
       status = GameStatus.won;
       totalLevelsCompleted++;
+      
+      // Stop timer and add bonus time if in time attack mode
+      if (isTimedMode) {
+        _stopGameTimer();
+        final timeBonus = gameMode.settings['timePerLevelBonus'] as int;
+        _remainingTimeSeconds += timeBonus;
+      }
+      
       saveGameState();
     }
   }
@@ -252,6 +297,57 @@ class GameState extends ChangeNotifier {
     currentLevel++;
     saveGameState();
     resetBoard();
+  }
+  
+  /// Set the game mode
+  void setGameMode(GameModeType type) {
+    if (_gameModeType != type) {
+      _gameModeType = type;
+      saveGameState();
+    }
+  }
+  
+  /// Start the game timer for timed modes
+  void _startGameTimer() {
+    if (!isTimedMode) return;
+    
+    _gameTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_remainingTimeSeconds > 0) {
+        _remainingTimeSeconds--;
+        notifyListeners();
+      } else {
+        // Time's up
+        _stopGameTimer();
+        status = GameStatus.failed;
+        notifyListeners();
+      }
+    });
+  }
+  
+  /// Stop the game timer
+  void _stopGameTimer() {
+    _gameTimer?.cancel();
+    _gameTimer = null;
+  }
+  
+  /// Pause the game
+  void pauseGame() {
+    if (status == GameStatus.playing) {
+      status = GameStatus.paused;
+      _stopGameTimer();
+      notifyListeners();
+    }
+  }
+  
+  /// Resume the game
+  void resumeGame() {
+    if (status == GameStatus.paused) {
+      status = GameStatus.playing;
+      if (isTimedMode) {
+        _startGameTimer();
+      }
+      notifyListeners();
+    }
   }
 
   /// Start tracking an active node for connection

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
+
 import '../widgets/background_grid.dart';
 import '../widgets/level_card.dart';
 
@@ -36,47 +37,36 @@ class LevelsScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Game mode selector
-                  Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF121212),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: const Color(0xFF00FFFF).withOpacity(0.5),
-                        width: 1,
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.pushNamed(context, '/game_modes');
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF121212),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: gameState.gameMode.color.withOpacity(0.5),
+                          width: 1,
+                        ),
                       ),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: DropdownButton<String>(
-                      value: gameState.currentGameMode,
-                      dropdownColor: const Color(0xFF121212),
-                      icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF00FFFF)),
-                      isExpanded: true,
-                      underline: const SizedBox(),
-                      style: const TextStyle(color: Color(0xFF00FFFF)),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'Classic',
-                          child: Text('Classic Mode'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Timed',
-                          child: Text('Timed Mode'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Challenge',
-                          child: Text('Challenge Mode'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Zen',
-                          child: Text('Zen Mode'),
-                        ),
-                      ],
-                      onChanged: (newValue) {
-                        if (newValue != null) {
-                          gameState.currentGameMode = newValue;
-                          gameState.saveGameState();
-                        }
-                      },
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(gameState.gameMode.icon, color: gameState.gameMode.color),
+                              const SizedBox(width: 12),
+                              Text(
+                                '${gameState.currentGameModeName} Mode',
+                                style: TextStyle(color: gameState.gameMode.color),
+                              ),
+                            ],
+                          ),
+                          const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFF00FFFF)),
+                        ],
+                      ),
                     ),
                   ),
                   

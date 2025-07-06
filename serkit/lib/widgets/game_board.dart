@@ -1,9 +1,11 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../models/node.dart';
 import '../models/connection.dart';
 import 'node_widget.dart';
+import 'connection_animation.dart';
 
 class GameBoard extends StatefulWidget {
   final VoidCallback? onConnectionComplete;
@@ -21,12 +23,24 @@ class GameBoard extends StatefulWidget {
   State<GameBoard> createState() => _GameBoardState();
 }
 
-class _GameBoardState extends State<GameBoard> {
+class _GameBoardState extends State<GameBoard> with TickerProviderStateMixin {
   /// Track current pointer position during drag
   Offset? _currentPointerPosition;
   
   /// Size of each node in the grid
   double _nodeSize = 60.0;
+  
+  /// Track newly added connections for animations
+  Map<Connection, AnimationController> _connectionAnimations = {};
+  
+  @override
+  void dispose() {
+    // Clean up all animation controllers
+    for (final controller in _connectionAnimations.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
   
   @override
   Widget build(BuildContext context) {
@@ -74,17 +88,36 @@ class _GameBoardState extends State<GameBoard> {
                 painter: GridPainter(_nodeSize),
               ),
               
-              // Draw existing connections
-              CustomPaint(
-                size: Size(
-                  _nodeSize * (gameState.board.isNotEmpty ? gameState.board[0].length : 0),
-                  _nodeSize * gameState.board.length,
-                ),
-                painter: ConnectionPainter(
-                  gameState.connections,
-                  _nodeSize,
-                ),
+              // Draw existing connections with animations
+              Stack(
+                children: [
+                  // Static connections
+                  CustomPaint(
+                    size: Size(
+                      _nodeSize * (gameState.board.isNotEmpty ? gameState.board[0].length : 0),
+                      _nodeSize * gameState.board.length,
+                    ),
+                    painter: ConnectionPainter(
+                      // Only draw connections without animations
+                      gameState.connections.where(
+                        (conn) => !_connectionAnimations.containsKey(conn)
+                      ).toList(),
+                      _nodeSize,
+                    ),
+                  ),
+                  
+                  // Animated connections
+                  ...gameState.connections
+                    .where((conn) => _connectionAnimations.containsKey(conn))
+                    .map((conn) => ConnectionAnimation(
+                      connection: conn,
+                      boardSize: _nodeSize * (gameState.board.isNotEmpty ? gameState.board[0].length : 0),
+                      nodeSize: _nodeSize,
+                    ))
+                    .toList(),
+                ],
               ),
+              
               
               // Draw temporary connection during dragging
               if (gameState.isDragging && gameState.activeNode != null && _currentPointerPosition != null)
@@ -162,6 +195,34 @@ class _GameBoardState extends State<GameBoard> {
         
         // Add the connection to game state
         gameState.addConnection(connection);
+        
+        // Create animation controller for the new connection
+        final animController = AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 1500),
+        );
+        
+        setState(() {
+          _connectionAnimations[connection] = animController;
+        });
+        
+        // Remove from animations map after animation completes
+        animController.forward().then((_) {
+          if (mounted) {
+            setState(() {
+              _connectionAnimations.remove(connection);
+            });
+            animController.dispose();
+          }
+        });
+        
+        // Add particle burst at connection point
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            // Rebuild to ensure connection is shown properly
+            setState(() {});
+          }
+        });
         
         // Call the callback for connection added
         widget.onConnectionAdded?.call();
@@ -268,27 +329,76 @@ class TempConnectionPainter extends CustomPainter {
       (startNode.row * nodeSize) + (nodeSize / 2),
     );
     
-    // Create a pulsing effect
-    for (double i = 3; i > 0; i--) {
-      final paint = Paint()
-        ..color = startNode.color.withOpacity(0.1 * i)
-        ..strokeWidth = 3 + (4 - i) * 2
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round;
+    // Create a more interesting cyberpunk line effect with multiple segments
+    final dx = endPosition.dx - start.dx;
+    final dy = endPosition.dy - start.dy;
+    final distance = math.sqrt(dx * dx + dy * dy);
+    
+    // Only draw if there's distance between nodes
+    if (distance > 0) {
+      // Create dashed line effect
+      final dashLength = distance / 15;
+      final numDashes = (distance / dashLength).floor();
+      final dashGap = 3.0;
       
-      canvas.drawLine(start, endPosition, paint);
+      for (int i = 0; i < numDashes; i++) {
+        final startFraction = i * dashLength / distance;
+        final endFraction = (i * dashLength + dashLength - dashGap) / distance;
+        
+        final dashStart = Offset(
+          start.dx + dx * startFraction,
+          start.dy + dy * startFraction,
+        );
+        
+        final dashEnd = Offset(
+          start.dx + dx * endFraction,
+          start.dy + dy * endFraction,
+        );
+        
+        // Create a glowing effect
+        for (double j = 3; j > 0; j--) {
+          final paint = Paint()
+            ..color = _getNodeColor(startNode.type).withOpacity(0.1 * j)
+            ..strokeWidth = 3 + (4 - j) * 2
+            ..style = PaintingStyle.stroke
+            ..strokeCap = StrokeCap.round;
+          
+          canvas.drawLine(dashStart, dashEnd, paint);
+        }
+        
+        // Draw the main line
+        final paint = Paint()
+          ..color = _getNodeColor(startNode.type)
+          ..strokeWidth = 3
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round;
+        
+        canvas.drawLine(dashStart, dashEnd, paint);
+      }
+      
+      // Draw endpoint glow
+      final glowPaint = Paint()
+        ..color = _getNodeColor(startNode.type).withOpacity(0.2)
+        ..style = PaintingStyle.fill;
+      
+      canvas.drawCircle(endPosition, 12, glowPaint);
+      canvas.drawCircle(endPosition, 6, Paint()..color = _getNodeColor(startNode.type));
     }
-    
-    // Draw the main line
-    final paint = Paint()
-      ..color = startNode.color
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    
-    canvas.drawLine(start, endPosition, paint);
+  }
+  
+  Color _getNodeColor(NodeType type) {
+    switch (type) {
+      case NodeType.start:
+        return const Color(0xFF00FFFF); // Cyan for start nodes
+      case NodeType.end:
+        return const Color(0xFFF72585); // Pink for end nodes
+      case NodeType.junction:
+        return const Color(0xFF9D4EDD); // Purple for junctions
+      default:
+        return const Color(0xFFFFFFFF); // White for regular nodes
+    }
   }
   
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(CustomPainter oldDelegate) => true;
 }
